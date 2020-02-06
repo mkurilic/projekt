@@ -5,16 +5,29 @@ from pygame.gfxdraw import filled_circle as fcirc
 from pygame.draw import line
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.linalg import norm
 from random import randrange
 from scipy.constants import g
 
+def T(h):
+	return -131 + 0.003*h + 273.15
+
+def tlak(h):
+	h0 = 0
+	M = 0.0289644
+	R = 8.31432
+	p0 = 101325
+	return p0 * np.exp (-g * M * (h-h0) / (R * T(h)))
+
 def ulaz(vjetar = False):
-	h0 = int(input("Na kojoj visini zelite kuglicu? "))
+	h0 = int(input("\nNa kojoj visini zelite kuglicu? "))
 	fi = np.radians(int(input("Odaberite kut pod kojime ce kuglica biti izbacena: ")))
 	v_iznos = int(input("Pocetna brzina: "))
 	if (vjetar):
 		smjer = np.radians(int(input("Odaberite smjer vjetra. (stupnjevi)\n")))
+		print()
 		return h0, fi, v_iznos, smjer
+	print()
 	return h0, fi, v_iznos
 
 def crtaj(screen, pozicija, r, boja, X, Y):
@@ -103,58 +116,59 @@ def utjecajVjetra():
 	boja1 = pygame.Color(0, 50, 50)
 	bijela = pygame.Color(255, 255, 255)
 	
-	br_podataka = 0
 	svi = []
-	while True:
-		t = 0
-
-		u = input("\nZelite li pokrenuti simulaciju? ('n' za izlaz)\n")
-		if (u == 'n'):
-			graf(svi, True)
-			return
-		h0, fi, v0, smjer = ulaz(True)
-		alfa = 0.15 	#koeficijent koji ovisi o površini iznad koje gledamo iznose vjetra, uzeta vrijednost za ravnicu 
-		br_podataka += 1
-		kuglice = []
-		for i in range(11):
-			kuglice.append(np.array([0.0, h0]))
-		
-		akceleracija = np.array([0.0, -g])
-		screen = pygame.display.set_mode((Xsize, Ysize))
-		pygame.display.set_caption('kosi hitac pod utjecajem vjetra')
-		screen.fill(pygame.Color(0,0,0))
-		hmax = 0
-		i = 0
-		
-		for v10 in np.linspace(-20, 20, 11):
-			pozicije = []
-			v = np.array([v0 * np.cos(fi), v0 * np.sin(fi)])
-			izlazVjetar.write("%d. kuglica\n%13s\t\tBRZINA KUGLICE\t\tBRZINA VJETRA\t\tVRIJEME\n" % (i, "KOORDINATE"))
-			kuglica = kuglice[i]
-			i+=1
-			while (kuglica[1] >= 0):
-				v_iznos = np.sqrt(v[0]**2 + v[1]**2)
-				koordinatni(screen, Xsize, Ysize, bijela)
-				vH = v10 * (kuglica[1]/10)**alfa
-				vjetar = np.array([vH * np.cos(smjer), vH * np.sin(smjer)])
-				izlazVjetar.write("%3.2f\t%3.2f\t\t%14.2f\t\t%13.2f\t\t%7.2f\n" % (kuglica[0], kuglica[1], v_iznos, vH, t))
-
-				kuglica += v*dt + 1/2*akceleracija*(dt**2)  + vjetar*dt
-				if (hmax < kuglica[1]):
-					hmax = kuglica[1]
-				pozicije.append(kuglica.copy())
-				v += akceleracija*dt
-				t += dt
-				crtaj(screen, kuglica, 1, boja, Xsize, Ysize-100)
-				pygame.display.flip()
-			izlazVjetar.write("\n\n")
-			svi.append(pozicije)
-		pygame.quit()
+	m = 0.1				#masa kuglice 100g
+	R = 0.001			#radijus kuglice 1cm
+	A = R**2 * np.pi
+	t = 0
+	C = 0.4 			#pretpostavljeni koeficijent otpora zraka na kuglici 
+	h0, fi, v0, smjer = ulaz(True)
+	kuglice = []
+	for i in range(11):
+		kuglice.append(np.array([0.0, h0]))
+	akceleracija = np.array([0.0, -g])
+	screen = pygame.display.set_mode((Xsize, Ysize))
+	pygame.display.set_caption('kosi hitac pod utjecajem vjetra')
+	screen.fill(pygame.Color(0,0,0))
+	hmax = 0
+	i = 0
+	for w in np.linspace(-20, 20, 11):
+		pozicije = []
+		v = np.array([v0 * np.cos(fi), v0 * np.sin(fi)])
+		wv = np.array([w * np.cos(smjer), w * np.sin(smjer)])
+		kuglica = kuglice[i]
+		izlazVjetar.write("%d. kuglica\n%13s\t\tBRZINA KUGLICE\t\tSILA VJETRA\t\tVRIJEME\n" % (i+1, "KOORDINATE"))
+		kuglica = kuglice[i]
+		rand = pygame.Color(randrange(256), randrange(256), randrange(256))
+		i+=1
+		while (kuglica[1] >= 0):
+			v_iznos = norm(v)
+			D = tlak(kuglica[1])*C*A/2	#konstanta otpora ovisna o tlaku
+			f = D*norm(wv)*wv			#sila kojom vjetar djeluje na kuglicu
+			a = f/m + akceleracija		#ukupna akceleracija koja djeluje na kuglicu
+			v += akceleracija*dt
+			koordinatni(screen, Xsize, Ysize, bijela)
+			izlazVjetar.write("%3.2f\t%3.2f\t\t%14.2f\t\t%11.2f\t\t%7.2f\n" % (kuglica[0], kuglica[1], v_iznos, norm(f), t))
+			kuglica += v*dt + 1/2*a*(dt**2)
+			if (hmax < kuglica[1]):
+				hmax = kuglica[1]
+			pozicije.append(kuglica.copy())
+			t += dt
+			crtaj(screen, kuglica, 1, rand, Xsize, Ysize-100)
+			pygame.displarand = pygame.Color(randrange(256), randrange(256), randrange(256))
+		pygame.display.flip()
+		print ("%2d. kuglica je postigla visinu %3.2f" % (i, hmax))
+		izlazVjetar.write("\n\n")
+		svi.append(pozicije)
+	print()
+	pygame.quit()
+	graf(svi, True)
 		
 		
 def graf(podaci, vjetar):
 	plt.xlabel('x os')
 	plt.ylabel('y os')
+
 	if (vjetar):
 		vv = list(np.linspace(-20, 20, 11))
 		plt.title("Graficki prikaz hica s utjecajem vjetra")
@@ -162,9 +176,11 @@ def graf(podaci, vjetar):
 			kuglica = podaci[i]
 			x, y = zip(*kuglica)
 			plt.plot(x, y, label = "v(vjetar) = %d" % vv[i])
+			plt.axis('equal')
 	else:
 		plt.title("Graficki prikaz hica bez utjecaja vjetra")
 		i = 1
+
 		for kuglica in podaci:
 			x, y = zip(*kuglica)
 			plt.plot(x, y, label = "%d. kuglica" % i)
